@@ -1,144 +1,166 @@
-Street Style Store API
+# Street Style Store API
 
-Project Overview
+This project is a RESTful API developed using **Node.js** and **Express** with PostgreSQL for database operations. It includes CRUD operations, asynchronous file handling, rate-limiting middleware, and optional JWT-based authentication.
 
-This project is a RESTful API built using Node.js and Express, with PostgreSQL as the database. It includes CRUD operations for managing item data, asynchronous file handling for storing metadata, rate limiting middleware, and optional JWT-based authentication.
+## Features
 
-Features
+- **CRUD Operations:** Manage items in the PostgreSQL database.
+- **Asynchronous File Handling:** Store and retrieve metadata using file operations.
+- **Rate Limiting:** Limit API usage to 100 requests per 15 minutes.
+- **JWT Authentication (Optional):** Secure API endpoints with token-based authentication.
+- **Error Handling:** Robust error handling for database, rate-limiting, and input validation.
 
-CRUD Operations with PostgreSQL for item management.
+---
 
-Asynchronous file handling for logging item metadata.
+## Installation
 
-Rate-limiting middleware to control excessive API requests.
+1. Clone the repository:
 
-Optional JWT-based authentication for secure access.
+   ```bash
+   git clone https://github.com/Naveenchowdarytalluri/Street-Style-Store.git
 
-Installation and Setup
+## Step 2: Install Dependencies
 
-Prerequisites
+1. Ensure that **Node.js** is installed on your system.  
+   - [Download Node.js](https://nodejs.org/) if not already installed.  
+   - Verify installation by running:  
+     ```bash
+     node -v
+     npm -v
+     ```
 
-Node.js installed
+2. Install the required packages by running the following command in the terminal:  
+   ```bash
+   npm install
+## Step 3: Set Up PostgreSQL Database
 
-PostgreSQL database
+1. **Create a PostgreSQL database:**  
+   - You can use free cloud-based PostgreSQL services like [ElephantSQL](https://www.elephantsql.com/) or [Neon](https://neon.tech/).  
+   - Alternatively, install PostgreSQL locally and create a database using:  
+     ```sql
+     CREATE DATABASE street_style_store;
+     ```
 
-Steps to Setup
+2. **Configure the Database:**  
+   - Create a table for storing item data using the following SQL command:
+     ```sql
+     CREATE TABLE items (
+       id SERIAL PRIMARY KEY,
+       name VARCHAR(255) NOT NULL,
+       description TEXT,
+       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+     );
+     ```
 
-Clone the repository:
+3. **Database Connection Setup:**  
+   - In the `database.js` file, configure the connection string for PostgreSQL:
+     ```javascript
+     const { Pool } = require("pg");
+     const dotenv = require("dotenv");
+     dotenv.config();
 
-git clone <repository-url>
-cd street-style-store-api
+     const pool = new Pool({
+       connectionString: process.env.DATABASE_URL,
+     });
 
-Install project dependencies:
+     module.exports = pool;
+     ```
 
-npm install
+4. **Set Environment Variables:**  
+   - Create a `.env` file in the root of your project and add the following line:
+     ```env
+     DATABASE_URL=your_postgresql_connection_string
+     ```
+     Replace `your_postgresql_connection_string` with the actual URL from ElephantSQL or Neon.
 
-Create a .env file in the project root:
+5. **Verify Database Connection:**  
+   Run the following command to test the connection:
+   ```bash
+   node database.js
+## Step 4: Implement CRUD Operations
 
-DATABASE_URL=postgres://<your-postgres-connection-string>
+1. **Create CRUD API Routes:**  
+   Open `app.js` and define the following routes for your RESTful API:
 
-Ensure your PostgreSQL database is configured and accessible.
+   - **POST /api/items:** Create a new item  
+   ```javascript
+   app.post("/api/items", async (req, res) => {
+     try {
+       const { name, description } = req.body;
+       const newItem = await pool.query(
+         "INSERT INTO items (name, description) VALUES ($1, $2) RETURNING *",
+         [name, description]
+       );
+       res.json(newItem.rows[0]);
+     } catch (err) {
+       res.status(500).send("Server error");
+     }
+   });
+### Step 5: Test API Routes
 
-Initialize the database schema:
-
-psql <your_connection_url> -f config/schema.sql
-
-Start the development server:
-
-npx nodemon server.js
-
-API Endpoints
-
-Item Routes
-
-1. Create a New Item
-
-POST: /api/items
-
-Request Body:
-
-{
-  "name": "Street Style Shirt",
-  "description": "A stylish casual shirt"
-}
-
-Response:
-
-{
-  "message": "Item created successfully"
-}
-
-2. Retrieve All Items
-
-GET: /api/items
-
-Response:
-
-[
-  {
-    "id": 1,
-    "name": "Street Style Shirt",
-    "description": "A stylish casual shirt",
-    "created_at": "2023-02-08T10:00:00.000Z"
+#### **GET /api/items: Retrieve all items**
+```javascript
+app.get("/api/items", async (req, res) => {
+  try {
+    const allItems = await pool.query("SELECT * FROM items");
+    res.json(allItems.rows);
+  } catch (err) {
+    res.status(500).send("Server error");
   }
-]
+});
 
-3. Retrieve an Item by ID
+### **Step 5: Implement Asynchronous File Handling**
 
-GET: /api/items/:id
+#### **Overview:**  
+This step involves using asynchronous file operations to store metadata related to each item, such as timestamps of when new items are created.
 
-4. Update an Item
+#### **Implementation Details:**  
+- Use the `fs.promises` module to handle file operations in a non-blocking way.
+- Store logs in a `logs.json` file, appending metadata for each POST request.
 
-PUT: /api/items/:id
+#### **Sample Code:**  
+```javascript
+const fs = require("fs").promises;
 
-Request Body:
+app.post("/api/items", async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const newItem = await pool.query(
+      "INSERT INTO items (name, description) VALUES ($1, $2) RETURNING *",
+      [name, description]
+    );
 
-{
-  "name": "Updated Shirt",
-  "description": "Updated stylish description"
-}
+    // Log metadata to file asynchronously
+    const logData = {
+      id: newItem.rows[0].id,
+      name: newItem.rows[0].name,
+      created_at: new Date().toISOString(),
+    };
 
-5. Delete an Item
+    // Append log to logs.json file
+    const currentLogs = await fs
+      .readFile("logs.json", "utf8")
+      .then((data) => JSON.parse(data))
+      .catch(() => []);
+      
+    currentLogs.push(logData);
+    await fs.writeFile("logs.json", JSON.stringify(currentLogs, null, 2));
 
-DELETE: /api/items/:id
+    res.status(201).json(newItem.rows[0]);
+  } catch (err) {
+    res.status(500).send("Server error");
+  }
+});
 
-Rate Limiting
 
-Users are limited to 100 requests per 15 minutes.
+### **Project Structure**
 
-If the limit is exceeded, a 429 Too Many Requests error is returned.
 
-Asynchronous File Handling
-
-Metadata (such as timestamps) for each created item is logged in logs/logs.json.
-
-File operations are handled using the fs.promises module.
-
-Optional Authentication (JWT)
-
-Login: /api/login
-
-Provides a JWT token for secure access.
-
-Protected Routes: All item routes can be protected by JWT authentication.
-
-Database Schema
-
-Items Table
-
-CREATE TABLE IF NOT EXISTS items (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(255),
-  description TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-Error Handling
-
-Invalid user inputs
-
-API rate limits
-
-Database connection errors
-
-File operation errors
+### **Folder and File Descriptions**
+- **node_modules/**: Contains all npm-installed packages.  
+- **logs.json**: Stores metadata logs for each POST request.  
+- **database.js**: Handles PostgreSQL database connections.  
+- **db.sql**: SQL script to create the required database table.  
+- **server.js**: Entry point for starting the Express server.  
+- **middleware/rateLimiter.js**: Middleware for API rate limiting.  
+- **routes/itemsRoutes.js**: Defines API endpoints for CRUD operations.  
